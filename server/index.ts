@@ -346,6 +346,6 @@ app.post('/api/sessions/:id/kill', (req, res) => {
   res.json({ message: 'Kill request received (placeholder)', sessionId });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🤖 Sub-Agent Dashboard API running on http://localhost:${PORT}`);
 });
