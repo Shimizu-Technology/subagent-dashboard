@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
 import {
   Bot,
   User,
@@ -315,8 +316,31 @@ function MessageBubble({ msg, darkMode, index }: { msg: TranscriptMessage; darkM
         )}
       </div>
       
-      <div className={`text-sm whitespace-pre-wrap break-words leading-relaxed ${textClass}`}>
-        {msg.content.slice(0, 3000)}
+      <div className={`text-sm leading-relaxed prose prose-sm max-w-none ${darkMode ? 'prose-invert' : ''} ${textClass}`}>
+        <ReactMarkdown
+          components={{
+            // Style markdown elements for dark mode compatibility
+            h1: ({children}) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</h1>,
+            h2: ({children}) => <h2 className={`text-base font-semibold mb-2 ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</h2>,
+            h3: ({children}) => <h3 className={`text-sm font-semibold mb-1 ${darkMode ? 'text-neutral-200' : 'text-neutral-700'}`}>{children}</h3>,
+            p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
+            ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+            ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+            li: ({children}) => <li className="ml-2">{children}</li>,
+            code: ({className, children}) => {
+              const isInline = !className;
+              return isInline 
+                ? <code className={`px-1 py-0.5 rounded text-xs font-mono ${darkMode ? 'bg-neutral-700 text-amber-300' : 'bg-neutral-200 text-amber-700'}`}>{children}</code>
+                : <code className={`block p-3 rounded-lg text-xs font-mono overflow-x-auto ${darkMode ? 'bg-neutral-900 text-neutral-300' : 'bg-neutral-100 text-neutral-800'}`}>{children}</code>;
+            },
+            pre: ({children}) => <pre className="mb-2">{children}</pre>,
+            strong: ({children}) => <strong className={`font-semibold ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</strong>,
+            a: ({href, children}) => <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+            blockquote: ({children}) => <blockquote className={`border-l-4 pl-3 italic my-2 ${darkMode ? 'border-neutral-600 text-neutral-400' : 'border-neutral-300 text-neutral-600'}`}>{children}</blockquote>,
+          }}
+        >
+          {msg.content.slice(0, 3000)}
+        </ReactMarkdown>
         {msg.content.length > 3000 && (
           <span className={`italic ${darkMode ? 'text-neutral-500' : 'text-neutral-400'}`}>
             ... (truncated, {msg.content.length.toLocaleString()} chars total)
@@ -359,6 +383,27 @@ function MessageBubble({ msg, darkMode, index }: { msg: TranscriptMessage; darkM
 }
 
 function TranscriptView({ session, darkMode }: { session: SessionDetail | null; darkMode: boolean }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevSessionId = useRef<string | null>(null);
+
+  // Auto-scroll to bottom when session changes or transcript updates
+  useEffect(() => {
+    if (session && scrollRef.current) {
+      // Only auto-scroll if this is a new session or transcript updated
+      if (prevSessionId.current !== session.id) {
+        // New session - scroll immediately
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        prevSessionId.current = session.id;
+      } else {
+        // Same session, transcript updated - smooth scroll
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [session?.id, session?.transcript.length]);
+
   if (!session) {
     return (
       <div className={`flex flex-col items-center justify-center h-full ${
@@ -405,7 +450,7 @@ function TranscriptView({ session, darkMode }: { session: SessionDetail | null; 
           </span>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
         <AnimatePresence>
           {session.transcript.map((msg, idx) => (
             <MessageBubble key={idx} msg={msg} darkMode={darkMode} index={idx} />

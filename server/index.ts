@@ -156,39 +156,55 @@ function extractLabel(entries: SessionEntry[], filename: string, content: string
     }
   }
   
-  // Check session entry for cwd-based label
-  for (const entry of entries) {
-    if (entry.type === 'session' && entry.cwd) {
-      const cwdParts = entry.cwd.split('/');
-      const cwdLabel = cwdParts[cwdParts.length - 1] || 'session';
-      // Skip generic labels
-      if (cwdLabel !== 'clawd' && cwdLabel !== 'home' && cwdLabel !== 'clawdbot') {
-        return cwdLabel;
-      }
-    }
-  }
-  
-  // Try to extract label from sessions_list output if this session appears there
-  // Pattern: "label":"<name>" in context of this session's ID
-  const sessionId = filename.replace('.jsonl', '');
-  const labelPattern = new RegExp(`"sessionId"\\s*:\\s*"${sessionId}"[^}]*"label"\\s*:\\s*"([^"]+)"`, 'i');
-  const match = content.match(labelPattern);
-  if (match) {
-    return match[1];
-  }
-  
-  // Check for task marker in first user message
+  // Check for task marker in first user message (this is most reliable for subagents)
   const firstUserMsg = entries.find(e => e.type === 'message' && e.message?.role === 'user');
   if (firstUserMsg?.message?.content) {
     const msgContent = typeof firstUserMsg.message.content === 'string' 
       ? firstUserMsg.message.content 
       : firstUserMsg.message.content.map(b => b.text || '').join('');
     
-    // Extract task title if present
+    // Extract subagent label from "- Label: <label>" pattern (in Subagent Context section)
+    const subagentLabelMatch = msgContent.match(/- Label:\s*([^\n]+)/);
+    if (subagentLabelMatch) {
+      return subagentLabelMatch[1].trim();
+    }
+    
+    // Extract task title from ## header (common for task messages)
     const taskMatch = msgContent.match(/##\s+([^\n]+)/);
     if (taskMatch) {
-      return taskMatch[1].slice(0, 30).trim();
+      const title = taskMatch[1].trim();
+      // Clean up common patterns like "(JRY-63 Polish)" at the end
+      const cleanTitle = title.replace(/\s*\([^)]+\)\s*$/, '').slice(0, 40).trim();
+      if (cleanTitle.length > 3) {
+        return cleanTitle;
+      }
     }
+    
+    // Extract from cron job pattern: [cron:UUID Name]
+    const cronMatch = msgContent.match(/\[cron:[a-f0-9-]+\s+([^\]]+)\]/i);
+    if (cronMatch) {
+      return cronMatch[1].trim();
+    }
+  }
+  
+  // Check session entry for cwd-based label (fallback)
+  for (const entry of entries) {
+    if (entry.type === 'session' && entry.cwd) {
+      const cwdParts = entry.cwd.split('/');
+      const cwdLabel = cwdParts[cwdParts.length - 1] || 'session';
+      // Skip generic labels
+      if (cwdLabel !== 'clawd' && cwdLabel !== 'home' && cwdLabel !== 'clawdbot' && cwdLabel !== 'jerry') {
+        return cwdLabel;
+      }
+    }
+  }
+  
+  // Try to extract label from sessions_list output if this session appears there
+  const sessionId = filename.replace('.jsonl', '');
+  const labelPattern = new RegExp(`"sessionId"\\s*:\\s*"${sessionId}"[^}]*"label"\\s*:\\s*"([^"]+)"`, 'i');
+  const match = content.match(labelPattern);
+  if (match) {
+    return match[1];
   }
   
   return filename.replace('.jsonl', '').slice(0, 12);
