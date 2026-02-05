@@ -105,7 +105,50 @@ function parseJSONL(content: string): SessionEntry[] {
   return entries;
 }
 
-function extractLabel(entries: SessionEntry[], filename: string): string {
+/**
+ * Detect if a session is a subagent by checking:
+ * 1. If the content contains "# Subagent Context" (injected into subagent prompts)
+ * 2. If the content contains session key patterns like "agent:main:subagent:"
+ * 3. If the label contains "subagent"
+ */
+function detectSubagent(content: string, label: string): boolean {
+  // Check label first (fastest)
+  if (label.toLowerCase().includes('subagent')) {
+    return true;
+  }
+  
+  // Check for subagent context marker in the content
+  // This is injected into subagent sessions as part of the system prompt
+  if (content.includes('# Subagent Context') || content.includes('## Subagent Context')) {
+    return true;
+  }
+  
+  // Check for session key pattern in tool results
+  // When sessions are listed, subagent session keys contain "subagent"
+  // Pattern: "key":"agent:main:subagent:UUID" or "Your session: agent:main:subagent:"
+  const subagentKeyPattern = /["']?key["']?\s*:\s*["']agent:main:subagent:/i;
+  const yourSessionPattern = /Your session:\s*agent:main:subagent:/i;
+  
+  if (subagentKeyPattern.test(content) || yourSessionPattern.test(content)) {
+    // This is a parent session that spawned subagents, not a subagent itself
+    // We want to detect the actual subagent sessions
+    // But if the session's own info shows it's a subagent, that's different
+  }
+  
+  // Check for sessions_list tool results that show this session as a subagent
+  // The pattern "childSessionKey":"agent:main:subagent:" appears in spawn results
+  // But those identify OTHER sessions, not THIS one
+  
+  // Check if this session was the target of a spawn
+  // Look for specific patterns that indicate this is a subagent session:
+  // - Single user message with a task
+  // - No heartbeat patterns
+  // - Contains task markers like "## " or "Task:" in first message
+  
+  return false;
+}
+
+function extractLabel(entries: SessionEntry[], filename: string, content: string): string {
   // Check for label in custom data
   for (const entry of entries) {
     if (entry.type === 'custom' && entry.data && typeof entry.data.label === 'string') {
@@ -117,14 +160,35 @@ function extractLabel(entries: SessionEntry[], filename: string): string {
   for (const entry of entries) {
     if (entry.type === 'session' && entry.cwd) {
       const cwdParts = entry.cwd.split('/');
-      return cwdParts[cwdParts.length - 1] || 'session';
+      const cwdLabel = cwdParts[cwdParts.length - 1] || 'session';
+      // Skip generic labels
+      if (cwdLabel !== 'clawd' && cwdLabel !== 'home' && cwdLabel !== 'clawdbot') {
+        return cwdLabel;
+      }
     }
   }
   
-  // Extract from filename if it's a subagent
-  if (filename.includes('subagent')) {
-    const match = filename.match(/subagent:([^.]+)/);
-    if (match) return `subagent:${match[1].slice(0, 8)}`;
+  // Try to extract label from sessions_list output if this session appears there
+  // Pattern: "label":"<name>" in context of this session's ID
+  const sessionId = filename.replace('.jsonl', '');
+  const labelPattern = new RegExp(`"sessionId"\\s*:\\s*"${sessionId}"[^}]*"label"\\s*:\\s*"([^"]+)"`, 'i');
+  const match = content.match(labelPattern);
+  if (match) {
+    return match[1];
+  }
+  
+  // Check for task marker in first user message
+  const firstUserMsg = entries.find(e => e.type === 'message' && e.message?.role === 'user');
+  if (firstUserMsg?.message?.content) {
+    const msgContent = typeof firstUserMsg.message.content === 'string' 
+      ? firstUserMsg.message.content 
+      : firstUserMsg.message.content.map(b => b.text || '').join('');
+    
+    // Extract task title if present
+    const taskMatch = msgContent.match(/##\s+([^\n]+)/);
+    if (taskMatch) {
+      return taskMatch[1].slice(0, 30).trim();
+    }
   }
   
   return filename.replace('.jsonl', '').slice(0, 12);
@@ -162,6 +226,12 @@ function extractStatus(entries: SessionEntry[]): 'active' | 'completed' | 'unkno
   
   for (const entry of lastEntries) {
     if (entry.type === 'message' && entry.message?.stopReason === 'end_turn') {
+      // Check if it was recent (within 2 minutes)
+      const lastTime = entry.timestamp ? new Date(entry.timestamp).getTime() : 0;
+      const now = Date.now();
+      if (now - lastTime < 2 * 60 * 1000) {
+        return 'active';
+      }
       return 'completed';
     }
   }
@@ -236,11 +306,13 @@ app.get('/api/sessions', (_req, res) => {
       const content = fs.readFileSync(filepath, 'utf-8');
       const entries = parseJSONL(content);
       
-      const label = extractLabel(entries, file);
-      const isSubagent = file.includes('subagent') || label.includes('subagent');
+      const label = extractLabel(entries, file, content);
       const model = extractModel(entries);
       const { tokens, cost } = extractUsageTotals(entries);
       const status = extractStatus(entries);
+      
+      // Improved subagent detection
+      const isSubagent = detectSubagent(content, label);
       
       // Find first timestamp
       let startTime = stat.birthtime.toISOString();
@@ -319,9 +391,10 @@ app.get('/api/sessions/:id', (req, res) => {
       }
     }
 
-    const label = extractLabel(entries, `${sessionId}.jsonl`);
+    const label = extractLabel(entries, `${sessionId}.jsonl`, content);
     const model = extractModel(entries);
     const { tokens, cost } = extractUsageTotals(entries);
+    const isSubagent = detectSubagent(content, label);
 
     res.json({
       id: sessionId,
@@ -330,7 +403,8 @@ app.get('/api/sessions/:id', (req, res) => {
       totalTokens: tokens,
       totalCost: cost,
       transcript,
-      totalMessages: transcript.length
+      totalMessages: transcript.length,
+      isSubagent
     });
   } catch (error) {
     console.error('Error reading session:', error);
@@ -347,5 +421,5 @@ app.post('/api/sessions/:id/kill', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🤖 Sub-Agent Dashboard API running on http://localhost:${PORT}`);
+  console.log(`Sub-Agent Dashboard API running on http://localhost:${PORT}`);
 });
