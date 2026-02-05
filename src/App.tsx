@@ -55,7 +55,7 @@ interface SessionDetail {
   totalMessages: number;
 }
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3001/api' : `http://${window.location.hostname}:3001/api`;
 
 function timeSince(isoString: string): string {
   const seconds = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
