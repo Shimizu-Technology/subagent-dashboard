@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -23,7 +23,11 @@ import {
   Activity,
   Filter,
   Eye,
-  EyeOff
+  EyeOff,
+  Menu,
+  ArrowLeft,
+  ChevronUp,
+  Loader2
 } from 'lucide-react';
 
 interface ToolCall {
@@ -83,6 +87,10 @@ interface SessionDetail {
 }
 
 const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3001/api' : `http://${window.location.hostname}:3001/api`;
+
+// Constants for pagination
+const INITIAL_MESSAGE_COUNT = 100;
+const LOAD_MORE_COUNT = 100;
 
 function timeSince(isoString: string): string {
   const seconds = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
@@ -151,6 +159,33 @@ function LoadingSkeleton({ darkMode }: { darkMode: boolean }) {
   );
 }
 
+function TranscriptLoadingSkeleton({ darkMode }: { darkMode: boolean }) {
+  return (
+    <div className="p-5 space-y-4">
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className={`p-5 rounded-2xl border animate-pulse ${
+            darkMode 
+              ? 'bg-neutral-800/50 border-neutral-700/50' 
+              : 'bg-white border-neutral-200'
+          } ${i % 2 === 0 ? 'ml-12' : 'mr-12'}`}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <div className={`w-3.5 h-3.5 rounded ${darkMode ? 'bg-neutral-700' : 'bg-neutral-200'}`} />
+            <div className={`h-3 w-16 rounded ${darkMode ? 'bg-neutral-700' : 'bg-neutral-200'}`} />
+          </div>
+          <div className="space-y-2">
+            <div className={`h-4 w-full rounded ${darkMode ? 'bg-neutral-700' : 'bg-neutral-200'}`} />
+            <div className={`h-4 w-3/4 rounded ${darkMode ? 'bg-neutral-700' : 'bg-neutral-200'}`} />
+            <div className={`h-4 w-1/2 rounded ${darkMode ? 'bg-neutral-700' : 'bg-neutral-200'}`} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SessionCard({ session, onClick, isSelected, darkMode }: { 
   session: Session; 
   onClick: () => void;
@@ -158,23 +193,18 @@ function SessionCard({ session, onClick, isSelected, darkMode }: {
   darkMode: boolean;
 }) {
   return (
-    <motion.div 
-      layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
+    <div 
       onClick={onClick}
-      className={`p-5 rounded-2xl cursor-pointer transition-colors duration-200 border ${
-        isSelected 
+      className={`p-4 sm:p-5 rounded-2xl cursor-pointer transition-all duration-150 border
+        active:scale-[0.98] active:opacity-80
+        ${isSelected 
           ? darkMode 
             ? 'border-blue-500 bg-blue-950/40' 
             : 'border-blue-500 bg-blue-50'
           : darkMode
             ? 'border-neutral-700/50 bg-neutral-800/50 hover:border-neutral-600'
             : 'border-neutral-200 bg-white hover:border-neutral-300'
-      } ${session.isSubagent ? darkMode ? 'ring-1 ring-purple-500/40' : 'ring-1 ring-purple-400/60' : ''}`}
+        } ${session.isSubagent ? darkMode ? 'ring-1 ring-purple-500/40' : 'ring-1 ring-purple-400/60' : ''}`}
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -188,42 +218,42 @@ function SessionCard({ session, onClick, isSelected, darkMode }: {
             darkMode ? 'bg-purple-900/50 text-purple-300 border border-purple-700/50' : 'bg-purple-100 text-purple-700'
           }`}>
             <Bot className="w-3 h-3" />
-            sub-agent
+            <span className="hidden sm:inline">sub-agent</span>
           </span>
         )}
       </div>
       
       <div className={`text-xs mb-3 flex items-center gap-1.5 ${darkMode ? 'text-neutral-400' : 'text-neutral-500'}`}>
         <Brain className="w-3 h-3" />
-        {session.model}
+        <span className="truncate">{session.model}</span>
       </div>
       
       <div className={`text-sm space-y-2 ${darkMode ? 'text-neutral-400' : 'text-neutral-600'}`}>
         <div className="flex justify-between items-center">
           <span className="flex items-center gap-1.5">
             <MessageSquare className="w-3.5 h-3.5" />
-            Messages
+            <span className="hidden sm:inline">Messages</span>
           </span>
           <span className={`font-medium ${darkMode ? 'text-neutral-200' : 'text-neutral-700'}`}>{session.messageCount}</span>
         </div>
         <div className="flex justify-between items-center">
           <span className="flex items-center gap-1.5">
             <BarChart2 className="w-3.5 h-3.5" />
-            Tokens
+            <span className="hidden sm:inline">Tokens</span>
           </span>
           <span className={`font-medium ${darkMode ? 'text-neutral-200' : 'text-neutral-700'}`}>{formatTokens(session.totalTokens)}</span>
         </div>
         <div className="flex justify-between items-center">
           <span className="flex items-center gap-1.5">
             <DollarSign className="w-3.5 h-3.5" />
-            Cost
+            <span className="hidden sm:inline">Cost</span>
           </span>
           <span className={`font-medium ${darkMode ? 'text-neutral-200' : 'text-neutral-700'}`}>{formatCost(session.totalCost)}</span>
         </div>
         <div className="flex justify-between items-center">
           <span className="flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
-            Last activity
+            <span className="hidden sm:inline">Last activity</span>
           </span>
           <span className={`font-medium ${darkMode ? 'text-neutral-200' : 'text-neutral-700'}`}>{timeSince(session.lastActivity)}</span>
         </div>
@@ -234,7 +264,7 @@ function SessionCard({ session, onClick, isSelected, darkMode }: {
       }`}>
         {session.id.slice(0, 20)}...
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -244,9 +274,7 @@ function ToolCallBlock({ toolCall, darkMode }: { toolCall: ToolCall; darkMode: b
   const isLong = argsStr.length > 100;
   
   return (
-    <motion.div 
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
+    <div 
       className={`mt-3 rounded-xl p-4 font-mono text-xs border ${
         darkMode ? 'bg-amber-950/30 border-amber-800/50' : 'bg-amber-50 border-amber-200'
       }`}
@@ -270,11 +298,64 @@ function ToolCallBlock({ toolCall, darkMode }: { toolCall: ToolCall; darkMode: b
       <pre className={`whitespace-pre-wrap break-all ${darkMode ? 'text-amber-200' : 'text-amber-900'}`}>
         {expanded || !isLong ? argsStr : argsStr.slice(0, 100) + '...'}
       </pre>
-    </motion.div>
+    </div>
   );
 }
 
-function MessageBubble({ msg, darkMode, index }: { msg: TranscriptMessage; darkMode: boolean; index: number }) {
+// Memoized markdown component to avoid re-renders
+const MemoizedMarkdown = memo(function MemoizedMarkdown({ 
+  content, 
+  darkMode 
+}: { 
+  content: string; 
+  darkMode: boolean;
+}) {
+  // Truncate very long content for performance
+  const displayContent = content.length > 3000 ? content.slice(0, 3000) : content;
+  const truncated = content.length > 3000;
+  
+  return (
+    <>
+      <ReactMarkdown
+        components={{
+          h1: ({children}) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</h1>,
+          h2: ({children}) => <h2 className={`text-base font-semibold mb-2 ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</h2>,
+          h3: ({children}) => <h3 className={`text-sm font-semibold mb-1 ${darkMode ? 'text-neutral-200' : 'text-neutral-700'}`}>{children}</h3>,
+          p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
+          ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+          ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+          li: ({children}) => <li className="ml-2">{children}</li>,
+          code: ({className, children}) => {
+            const isInline = !className;
+            return isInline 
+              ? <code className={`px-1 py-0.5 rounded text-xs font-mono ${darkMode ? 'bg-neutral-700 text-amber-300' : 'bg-neutral-200 text-amber-700'}`}>{children}</code>
+              : <code className={`block p-3 rounded-lg text-xs font-mono overflow-x-auto ${darkMode ? 'bg-neutral-900 text-neutral-300' : 'bg-neutral-100 text-neutral-800'}`}>{children}</code>;
+          },
+          pre: ({children}) => <pre className="mb-2">{children}</pre>,
+          strong: ({children}) => <strong className={`font-semibold ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</strong>,
+          a: ({href, children}) => <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+          blockquote: ({children}) => <blockquote className={`border-l-4 pl-3 italic my-2 ${darkMode ? 'border-neutral-600 text-neutral-400' : 'border-neutral-300 text-neutral-600'}`}>{children}</blockquote>,
+        }}
+      >
+        {displayContent}
+      </ReactMarkdown>
+      {truncated && (
+        <span className={`italic ${darkMode ? 'text-neutral-500' : 'text-neutral-400'}`}>
+          ... (truncated, {content.length.toLocaleString()} chars total)
+        </span>
+      )}
+    </>
+  );
+});
+
+// Memoized message bubble to prevent expensive re-renders
+const MessageBubble = memo(function MessageBubble({ 
+  msg, 
+  darkMode 
+}: { 
+  msg: TranscriptMessage; 
+  darkMode: boolean;
+}) {
   const isUser = msg.role === 'user';
   const isTool = msg.role === 'tool';
   const isAssistant = msg.role === 'assistant';
@@ -294,11 +375,8 @@ function MessageBubble({ msg, darkMode, index }: { msg: TranscriptMessage; darkM
   const RoleIcon = isUser ? User : isTool ? Zap : Bot;
   
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.02 }}
-      className={`p-5 rounded-2xl border ${bgClass} ${isUser ? 'ml-12' : isTool ? 'mx-6' : 'mr-12'}`}
+    <div 
+      className={`p-4 sm:p-5 rounded-2xl border ${bgClass} ${isUser ? 'ml-4 sm:ml-12' : isTool ? 'mx-2 sm:mx-6' : 'mr-4 sm:mr-12'}`}
     >
       <div className="flex items-center justify-between mb-3">
         <span className={`text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 ${
@@ -317,35 +395,7 @@ function MessageBubble({ msg, darkMode, index }: { msg: TranscriptMessage; darkM
       </div>
       
       <div className={`text-sm leading-relaxed prose prose-sm max-w-none ${darkMode ? 'prose-invert' : ''} ${textClass}`}>
-        <ReactMarkdown
-          components={{
-            // Style markdown elements for dark mode compatibility
-            h1: ({children}) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</h1>,
-            h2: ({children}) => <h2 className={`text-base font-semibold mb-2 ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</h2>,
-            h3: ({children}) => <h3 className={`text-sm font-semibold mb-1 ${darkMode ? 'text-neutral-200' : 'text-neutral-700'}`}>{children}</h3>,
-            p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
-            ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-            ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-            li: ({children}) => <li className="ml-2">{children}</li>,
-            code: ({className, children}) => {
-              const isInline = !className;
-              return isInline 
-                ? <code className={`px-1 py-0.5 rounded text-xs font-mono ${darkMode ? 'bg-neutral-700 text-amber-300' : 'bg-neutral-200 text-amber-700'}`}>{children}</code>
-                : <code className={`block p-3 rounded-lg text-xs font-mono overflow-x-auto ${darkMode ? 'bg-neutral-900 text-neutral-300' : 'bg-neutral-100 text-neutral-800'}`}>{children}</code>;
-            },
-            pre: ({children}) => <pre className="mb-2">{children}</pre>,
-            strong: ({children}) => <strong className={`font-semibold ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>{children}</strong>,
-            a: ({href, children}) => <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
-            blockquote: ({children}) => <blockquote className={`border-l-4 pl-3 italic my-2 ${darkMode ? 'border-neutral-600 text-neutral-400' : 'border-neutral-300 text-neutral-600'}`}>{children}</blockquote>,
-          }}
-        >
-          {msg.content.slice(0, 3000)}
-        </ReactMarkdown>
-        {msg.content.length > 3000 && (
-          <span className={`italic ${darkMode ? 'text-neutral-500' : 'text-neutral-400'}`}>
-            ... (truncated, {msg.content.length.toLocaleString()} chars total)
-          </span>
-        )}
+        <MemoizedMarkdown content={msg.content} darkMode={darkMode} />
       </div>
       
       {msg.toolCalls && msg.toolCalls.length > 0 && (
@@ -357,12 +407,12 @@ function MessageBubble({ msg, darkMode, index }: { msg: TranscriptMessage; darkM
       )}
       
       {isAssistant && msg.usage && (
-        <div className={`mt-4 pt-3 border-t text-xs flex flex-wrap gap-4 ${
+        <div className={`mt-4 pt-3 border-t text-xs flex flex-wrap gap-2 sm:gap-4 ${
           darkMode ? 'border-neutral-700/50 text-neutral-500' : 'border-neutral-200 text-neutral-400'
         }`}>
           <span className="flex items-center gap-1">
             <BarChart2 className="w-3 h-3" />
-            {formatTokens(msg.usage.totalTokens)} tokens
+            {formatTokens(msg.usage.totalTokens)}
           </span>
           {msg.usage.cost && (
             <span className="flex items-center gap-1">
@@ -373,36 +423,86 @@ function MessageBubble({ msg, darkMode, index }: { msg: TranscriptMessage; darkM
           {msg.model && (
             <span className="flex items-center gap-1">
               <Brain className="w-3 h-3" />
-              {msg.model}
+              <span className="truncate max-w-[100px] sm:max-w-none">{msg.model}</span>
             </span>
           )}
         </div>
       )}
-    </motion.div>
+    </div>
   );
-}
+});
 
-function TranscriptView({ session, darkMode }: { session: SessionDetail | null; darkMode: boolean }) {
+function TranscriptView({ 
+  session, 
+  darkMode, 
+  loading,
+  onBack 
+}: { 
+  session: SessionDetail | null; 
+  darkMode: boolean;
+  loading: boolean;
+  onBack?: () => void;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevSessionId = useRef<string | null>(null);
+  const [displayCount, setDisplayCount] = useState(INITIAL_MESSAGE_COUNT);
 
-  // Auto-scroll to bottom when session changes or transcript updates
+  // Reset display count when session changes
   useEffect(() => {
-    if (session && scrollRef.current) {
-      // Only auto-scroll if this is a new session or transcript updated
-      if (prevSessionId.current !== session.id) {
-        // New session - scroll immediately
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        prevSessionId.current = session.id;
-      } else {
-        // Same session, transcript updated - smooth scroll
-        scrollRef.current.scrollTo({
-          top: scrollRef.current.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
+    if (session && prevSessionId.current !== session.id) {
+      setDisplayCount(INITIAL_MESSAGE_COUNT);
+      prevSessionId.current = session.id;
     }
-  }, [session?.id, session?.transcript.length]);
+  }, [session?.id]);
+
+  // Auto-scroll to bottom when session changes or new messages arrive
+  useEffect(() => {
+    if (session && scrollRef.current && !loading) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [session?.id, session?.transcript.length, loading]);
+
+  // Calculate which messages to display (pagination from the end)
+  const { displayedMessages, hiddenCount, totalCount } = useMemo(() => {
+    if (!session) return { displayedMessages: [], hiddenCount: 0, totalCount: 0 };
+    const total = session.transcript.length;
+    const startIndex = Math.max(0, total - displayCount);
+    return {
+      displayedMessages: session.transcript.slice(startIndex),
+      hiddenCount: startIndex,
+      totalCount: total
+    };
+  }, [session, displayCount]);
+
+  const loadMore = useCallback(() => {
+    setDisplayCount(prev => prev + LOAD_MORE_COUNT);
+  }, []);
+
+  // Show loading skeleton
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full">
+        {onBack && (
+          <div className={`border-b p-3 lg:hidden ${darkMode ? 'bg-neutral-800/30 border-neutral-700/50' : 'bg-neutral-50 border-neutral-200'}`}>
+            <button
+              onClick={onBack}
+              className={`flex items-center gap-2 text-sm font-medium ${darkMode ? 'text-neutral-300' : 'text-neutral-600'}`}
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to sessions
+            </button>
+          </div>
+        )}
+        <div className={`border-b p-5 ${darkMode ? 'bg-neutral-800/30 border-neutral-700/50' : 'bg-neutral-50 border-neutral-200'}`}>
+          <div className="flex items-center gap-3">
+            <Loader2 className={`w-5 h-5 animate-spin ${darkMode ? 'text-neutral-400' : 'text-neutral-500'}`} />
+            <span className={`font-medium ${darkMode ? 'text-neutral-300' : 'text-neutral-600'}`}>Loading transcript...</span>
+          </div>
+        </div>
+        <TranscriptLoadingSkeleton darkMode={darkMode} />
+      </div>
+    );
+  }
 
   if (!session) {
     return (
@@ -417,9 +517,22 @@ function TranscriptView({ session, darkMode }: { session: SessionDetail | null; 
 
   return (
     <div className="flex flex-col h-full">
-      <div className={`border-b p-5 ${darkMode ? 'bg-neutral-800/30 border-neutral-700/50' : 'bg-neutral-50 border-neutral-200'}`}>
-        <div className="flex items-center gap-2">
-          <h2 className={`font-bold text-lg tracking-tight ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>
+      {/* Mobile back button */}
+      {onBack && (
+        <div className={`border-b p-3 lg:hidden ${darkMode ? 'bg-neutral-800/30 border-neutral-700/50' : 'bg-neutral-50 border-neutral-200'}`}>
+          <button
+            onClick={onBack}
+            className={`flex items-center gap-2 text-sm font-medium ${darkMode ? 'text-neutral-300' : 'text-neutral-600'}`}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to sessions
+          </button>
+        </div>
+      )}
+      
+      <div className={`border-b p-4 sm:p-5 ${darkMode ? 'bg-neutral-800/30 border-neutral-700/50' : 'bg-neutral-50 border-neutral-200'}`}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className={`font-bold text-base sm:text-lg tracking-tight ${darkMode ? 'text-neutral-100' : 'text-neutral-800'}`}>
             {session.label}
           </h2>
           {session.isSubagent && (
@@ -431,31 +544,53 @@ function TranscriptView({ session, darkMode }: { session: SessionDetail | null; 
             </span>
           )}
         </div>
-        <div className={`text-sm flex flex-wrap gap-4 mt-2 ${darkMode ? 'text-neutral-400' : 'text-neutral-500'}`}>
+        <div className={`text-sm flex flex-wrap gap-2 sm:gap-4 mt-2 ${darkMode ? 'text-neutral-400' : 'text-neutral-500'}`}>
           <span className="flex items-center gap-1.5">
             <FileText className="w-4 h-4" />
-            {session.totalMessages} messages
+            {session.totalMessages}
           </span>
           <span className="flex items-center gap-1.5">
             <BarChart2 className="w-4 h-4" />
-            {formatTokens(session.totalTokens)} tokens
+            {formatTokens(session.totalTokens)}
           </span>
           <span className="flex items-center gap-1.5">
             <DollarSign className="w-4 h-4" />
             {formatCost(session.totalCost)}
           </span>
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-1.5 truncate">
             <Brain className="w-4 h-4" />
-            {session.model}
+            <span className="truncate max-w-[150px] sm:max-w-none">{session.model}</span>
           </span>
         </div>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4">
-        <AnimatePresence>
-          {session.transcript.map((msg, idx) => (
-            <MessageBubble key={idx} msg={msg} darkMode={darkMode} index={idx} />
-          ))}
-        </AnimatePresence>
+      
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4">
+        {/* Load more button at top */}
+        {hiddenCount > 0 && (
+          <button
+            onClick={loadMore}
+            className={`w-full py-3 rounded-xl border text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+              darkMode 
+                ? 'bg-neutral-800/50 border-neutral-700 text-neutral-400 hover:bg-neutral-700/50 hover:text-neutral-300'
+                : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200'
+            }`}
+          >
+            <ChevronUp className="w-4 h-4" />
+            Load {Math.min(LOAD_MORE_COUNT, hiddenCount)} earlier messages
+            <span className={`text-xs ${darkMode ? 'text-neutral-500' : 'text-neutral-400'}`}>
+              ({hiddenCount} hidden of {totalCount})
+            </span>
+          </button>
+        )}
+        
+        {/* Messages - no AnimatePresence for performance */}
+        {displayedMessages.map((msg, idx) => (
+          <MessageBubble 
+            key={`${session.id}-${hiddenCount + idx}`} 
+            msg={msg} 
+            darkMode={darkMode} 
+          />
+        ))}
       </div>
     </div>
   );
@@ -466,9 +601,11 @@ function App() {
   const [selectedSession, setSelectedSession] = useState<SessionDetail | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'subagent' | 'active'>('active'); // Default to active
-  const [showCompleted, setShowCompleted] = useState(false); // Toggle for completed sessions
+  const [filter, setFilter] = useState<'all' | 'subagent' | 'active'>('active');
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -494,6 +631,7 @@ function App() {
   }, []);
 
   const fetchSessionDetail = useCallback(async (id: string) => {
+    setTranscriptLoading(true);
     try {
       const res = await fetch(`${API_URL}/sessions/${id}`);
       if (!res.ok) throw new Error('Failed to fetch session');
@@ -501,7 +639,23 @@ function App() {
       setSelectedSession(data);
     } catch (err) {
       console.error('Failed to fetch session:', err);
+    } finally {
+      setTranscriptLoading(false);
     }
+  }, []);
+
+  // Immediate click handler - sets selection instantly
+  const handleSessionClick = useCallback((id: string) => {
+    setSelectedId(id);  // Immediate visual feedback
+    setShowSidebar(false);  // Hide sidebar on mobile
+    fetchSessionDetail(id);  // Start loading transcript
+  }, [fetchSessionDetail]);
+
+  // Back button handler for mobile
+  const handleBack = useCallback(() => {
+    setShowSidebar(true);
+    setSelectedId(null);
+    setSelectedSession(null);
   }, []);
 
   useEffect(() => {
@@ -514,22 +668,27 @@ function App() {
     return () => clearInterval(interval);
   }, [fetchSessions, autoRefresh]);
 
+  // Auto-refresh selected session (but don't show loading spinner)
   useEffect(() => {
-    if (!selectedId) return;
-    fetchSessionDetail(selectedId);
-    if (!autoRefresh) return;
-    const interval = setInterval(() => fetchSessionDetail(selectedId), 10000);
+    if (!selectedId || !autoRefresh) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/sessions/${selectedId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSelectedSession(data);
+        }
+      } catch {
+        // Silent fail for background refresh
+      }
+    }, 10000);
     return () => clearInterval(interval);
-  }, [selectedId, fetchSessionDetail, autoRefresh]);
+  }, [selectedId, autoRefresh]);
 
   const filteredSessions = sessions.filter(s => {
-    // First, apply the main filter
     if (filter === 'subagent' && !s.isSubagent) return false;
     if (filter === 'active' && s.status !== 'active') return false;
-    
-    // Then, unless "show completed" is on, hide completed sessions
     if (!showCompleted && s.status === 'completed' && filter !== 'all') return false;
-    
     return true;
   });
 
@@ -557,22 +716,37 @@ function App() {
   return (
     <div className={`min-h-screen transition-colors duration-200 ${darkMode ? 'bg-[#0a0a0b]' : 'bg-neutral-100'}`}>
       <header className={`border-b ${darkMode ? 'bg-neutral-900/80 border-neutral-800' : 'bg-white border-neutral-200'}`}>
-        <div className="max-w-[1800px] mx-auto px-6 py-5">
-          <div className="flex flex-wrap justify-between items-center gap-4">
-            <div>
-              <h1 className={`text-2xl font-bold tracking-tight flex items-center gap-2 ${darkMode ? 'text-[#ececec]' : 'text-neutral-800'}`}>
-                <Bot className="w-7 h-7" />
-                Sub-Agent Dashboard
-              </h1>
-              <div className={`text-xs mt-1.5 flex items-center gap-1 ${darkMode ? 'text-neutral-500' : 'text-neutral-400'}`}>
-                <Clock className="w-3 h-3" />
-                Last refresh: {lastRefresh.toLocaleTimeString()}
+        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-4 sm:py-5">
+          <div className="flex flex-wrap justify-between items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-3">
+              {/* Mobile menu toggle */}
+              <button
+                onClick={() => setShowSidebar(!showSidebar)}
+                className={`lg:hidden p-2 rounded-lg border ${
+                  darkMode 
+                    ? 'border-neutral-700 text-neutral-400 hover:text-neutral-200'
+                    : 'border-neutral-300 text-neutral-600 hover:text-neutral-800'
+                }`}
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              
+              <div>
+                <h1 className={`text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2 ${darkMode ? 'text-[#ececec]' : 'text-neutral-800'}`}>
+                  <Bot className="w-6 sm:w-7 h-6 sm:h-7" />
+                  <span className="hidden sm:inline">Sub-Agent Dashboard</span>
+                  <span className="sm:hidden">Dashboard</span>
+                </h1>
+                <div className={`text-xs mt-1 sm:mt-1.5 flex items-center gap-1 ${darkMode ? 'text-neutral-500' : 'text-neutral-400'}`}>
+                  <Clock className="w-3 h-3" />
+                  {lastRefresh.toLocaleTimeString()}
+                </div>
               </div>
             </div>
             
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Filter buttons */}
-              <div className={`flex gap-1 p-1 rounded-xl ${darkMode ? 'bg-neutral-800/50' : 'bg-neutral-200/50'}`}>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              {/* Filter buttons - simplified on mobile */}
+              <div className={`hidden sm:flex gap-1 p-1 rounded-xl ${darkMode ? 'bg-neutral-800/50' : 'bg-neutral-200/50'}`}>
                 <button
                   onClick={() => setFilter('all')}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${
@@ -597,7 +771,7 @@ function App() {
                   }`}
                 >
                   <Bot className="w-3.5 h-3.5" />
-                  Sub-Agents ({stats.subagents})
+                  Sub ({stats.subagents})
                 </button>
                 <button
                   onClick={() => setFilter('active')}
@@ -614,10 +788,25 @@ function App() {
                 </button>
               </div>
               
-              {/* Show completed toggle */}
+              {/* Mobile filter dropdown */}
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as 'all' | 'subagent' | 'active')}
+                className={`sm:hidden px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                  darkMode 
+                    ? 'bg-neutral-800 border-neutral-700 text-neutral-200'
+                    : 'bg-white border-neutral-300 text-neutral-700'
+                }`}
+              >
+                <option value="all">All ({stats.total})</option>
+                <option value="subagent">Sub-Agents ({stats.subagents})</option>
+                <option value="active">Active ({stats.active})</option>
+              </select>
+              
+              {/* Show completed toggle - icon only on mobile */}
               <button
                 onClick={() => setShowCompleted(!showCompleted)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 border ${
+                className={`px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 border ${
                   showCompleted
                     ? darkMode 
                       ? 'bg-neutral-700 text-neutral-200 border-neutral-600'
@@ -628,14 +817,14 @@ function App() {
                 }`}
               >
                 {showCompleted ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                {showCompleted ? 'Showing All' : 'Show Completed'}
+                <span className="hidden sm:inline">{showCompleted ? 'Showing All' : 'Show Completed'}</span>
               </button>
               
               {/* Controls */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={() => setAutoRefresh(!autoRefresh)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 border ${
+                  className={`px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 border ${
                     autoRefresh
                       ? darkMode 
                         ? 'bg-emerald-900/30 text-emerald-400 border-emerald-700/50'
@@ -646,7 +835,7 @@ function App() {
                   }`}
                 >
                   {autoRefresh ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-                  Auto-refresh
+                  <span className="hidden sm:inline">Auto</span>
                 </button>
                 
                 <button
@@ -662,14 +851,14 @@ function App() {
                 
                 <button
                   onClick={fetchSessions}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 border ${
+                  className={`p-2 sm:px-3 sm:py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 border ${
                     darkMode 
                       ? 'text-neutral-400 border-neutral-700 hover:border-neutral-600 hover:text-neutral-200'
                       : 'text-neutral-600 border-neutral-300 hover:border-neutral-400'
                   }`}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Refresh
+                  <span className="hidden sm:inline">Refresh</span>
                 </button>
               </div>
             </div>
@@ -683,22 +872,30 @@ function App() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="max-w-[1800px] mx-auto px-6 py-3"
+            className="max-w-[1800px] mx-auto px-4 sm:px-6 py-3"
           >
-            <div className={`px-4 py-3 rounded-xl flex items-center gap-2 ${
+            <div className={`px-4 py-3 rounded-xl flex items-center gap-2 text-sm ${
               darkMode ? 'bg-red-950/50 text-red-300 border border-red-800/50' : 'bg-red-100 text-red-700 border border-red-200'
             }`}>
-              <AlertTriangle className="w-4 h-4" />
-              {error} - Make sure the server is running on port 3001
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span className="truncate">{error} - Server on port 3001?</span>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <main className="max-w-[1800px] mx-auto px-6 py-6">
-        <div className="grid grid-cols-12 gap-6 h-[calc(100vh-160px)]">
-          {/* Session List */}
-          <div className="col-span-12 md:col-span-4 lg:col-span-3 overflow-y-auto space-y-3 pr-2">
+      <main className="max-w-[1800px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 h-[calc(100vh-140px)] sm:h-[calc(100vh-160px)]">
+          {/* Session List - full screen on mobile, sidebar on desktop */}
+          <div className={`
+            ${showSidebar ? 'block' : 'hidden'} 
+            lg:block 
+            w-full lg:w-1/3 xl:w-1/4 
+            overflow-y-auto 
+            space-y-3 
+            pr-0 lg:pr-2
+            ${selectedId && !showSidebar ? 'hidden' : ''}
+          `}>
             {loading ? (
               <LoadingSkeleton darkMode={darkMode} />
             ) : filteredSessions.length === 0 ? (
@@ -718,7 +915,7 @@ function App() {
                     key={session.id}
                     session={session}
                     isSelected={selectedId === session.id}
-                    onClick={() => setSelectedId(session.id)}
+                    onClick={() => handleSessionClick(session.id)}
                     darkMode={darkMode}
                   />
                 ))}
@@ -726,15 +923,25 @@ function App() {
             )}
           </div>
 
-          {/* Transcript View */}
-          <motion.div 
-            layout
-            className={`col-span-12 md:col-span-8 lg:col-span-9 rounded-2xl overflow-hidden border ${
-              darkMode ? 'bg-neutral-900/50 border-neutral-800' : 'bg-white border-neutral-200'
-            }`}
+          {/* Transcript View - full screen on mobile when selected */}
+          <div 
+            className={`
+              ${!showSidebar || !selectedId ? 'block' : 'hidden lg:block'}
+              flex-1 
+              rounded-2xl 
+              overflow-hidden 
+              border 
+              min-h-[300px]
+              ${darkMode ? 'bg-neutral-900/50 border-neutral-800' : 'bg-white border-neutral-200'}
+            `}
           >
-            <TranscriptView session={selectedSession} darkMode={darkMode} />
-          </motion.div>
+            <TranscriptView 
+              session={selectedSession} 
+              darkMode={darkMode} 
+              loading={transcriptLoading}
+              onBack={handleBack}
+            />
+          </div>
         </div>
       </main>
     </div>
