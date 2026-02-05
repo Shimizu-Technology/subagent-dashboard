@@ -1,73 +1,113 @@
-# React + TypeScript + Vite
+# Sub-Agent Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A real-time monitoring dashboard for Jerry's sub-agents. Track active sessions, view transcripts, and monitor costs.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 📊 **Session Overview** — See all sessions with message count, tokens, and cost
+- 🏷️ **Sub-Agent Detection** — Automatically identifies and filters sub-agent sessions
+- 📝 **Transcript Viewer** — View full conversation history with markdown rendering
+- 🔄 **Auto-Refresh** — Updates every 10 seconds (configurable)
+- 🌙 **Dark Mode** — Proper dark theme (not pure black)
+- 📱 **Responsive** — Works on mobile and half-screen desktop
+- ⚡ **Performance** — Pagination for large sessions, instant click feedback
 
-## React Compiler
+## Quick Start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Install dependencies
+npm install
 
-## Expanding the ESLint configuration
+# Start both API and frontend
+npm run dev
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Frontend: http://localhost:5173
+# API: http://localhost:3001
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Architecture
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+├── server/
+│   └── index.ts        # Express API that reads OpenClaw session files
+├── src/
+│   └── App.tsx         # React dashboard with Tailwind + Framer Motion
+└── scripts/
+    └── jerry-menubar.sh  # SwiftBar plugin for macOS menu bar
+```
+
+### API Endpoints
+
+- `GET /api/sessions` — List all sessions with stats
+- `GET /api/sessions/:id` — Get full transcript for a session
+
+### Data Source
+
+Reads session JSONL files from: `~/.openclaw/agents/main/sessions/`
+
+## Menu Bar Widget (SwiftBar)
+
+Monitor Jerry's status from your macOS menu bar!
+
+### Installation
+
+1. **Install SwiftBar:**
+   ```bash
+   brew install --cask swiftbar
+   ```
+
+2. **Create plugins folder and add script:**
+   ```bash
+   mkdir -p ~/Library/Application\ Support/SwiftBar/Plugins
+   
+   curl -o ~/Library/Application\ Support/SwiftBar/Plugins/jerry.30s.sh \
+     https://raw.githubusercontent.com/Shimizu-Technology/subagent-dashboard/main/scripts/jerry-menubar.sh
+   
+   chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/jerry.30s.sh
+   ```
+
+3. **Open SwiftBar:**
+   ```bash
+   open -a SwiftBar
+   ```
+   
+   When prompted, select: `~/Library/Application Support/SwiftBar/Plugins`
+
+### What You'll See
+
+- **🟢 2** — 2 active sessions (green = activity)
+- **🤖** — Jerry idle (gray)
+- Click to see details and open full dashboard
+
+## Remote Access
+
+The dashboard runs on the Mac Mini and is accessible via Tailscale:
+
+- **Dashboard:** http://100.116.235.105:5173
+- **API:** http://100.116.235.105:3001
+
+## Development
+
+```bash
+# Run frontend only
+npm run dev:client
+
+# Run API only  
+npm run dev:server
+
+# Build for production
+npm run build
+```
+
+## Tech Stack
+
+- **Frontend:** React 19 + TypeScript + Vite
+- **Styling:** Tailwind CSS v4
+- **Animations:** Framer Motion
+- **Backend:** Express + TypeScript
+- **Icons:** Lucide React
+- **Markdown:** react-markdown
+
+## License
+
+Private — Shimizu Technology
